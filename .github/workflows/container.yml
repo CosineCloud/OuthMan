@@ -17,12 +17,12 @@ jobs:
         with:
           context: .
           target: test
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm/v7
           push: false
       - name: Build Raspberry Pi and PC images
         uses: docker/build-push-action@v6
         with:
           context: .
           target: app
-          platforms: linux/arm64,linux/amd64
+          platforms: linux/arm64,linux/arm/v7,linux/amd64
           push: false

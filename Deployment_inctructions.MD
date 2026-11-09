@@ -1,6 +1,6 @@
 # OuthMan Docker deployment on Raspberry Pi
 
-This guide builds OuthMan from `https://github.com/CosineCloud/OuthMan` and runs it with persistent data. The supplied image targets **64-bit Raspberry Pi OS (`linux/arm64`)** on a Pi 3/4/5 or another compatible ARM64 device. It also builds for `linux/amd64`. This setup does not claim support for 32-bit Pi OS or ARMv6 Pi/Zero models.
+This guide builds OuthMan from `https://github.com/CosineCloud/OuthMan` and runs it with persistent data. The supplied image targets **64-bit Raspberry Pi OS (`linux/arm64`)**, **32-bit ARMv7 Raspberry Pi OS (`linux/arm/v7`)**, and `linux/amd64`. A 64-bit OS is preferred where supported. ARMv6-only devices such as the original Pi/Zero are not covered.
 
 The Python official image supports ARM64; Docker's guidance for 64-bit Raspberry Pi OS is to use the Debian ARM64 installation. References: [Docker Raspberry Pi guidance](https://docs.docker.com/engine/install/raspberry-pi-os/), [Debian Docker installation](https://docs.docker.com/engine/install/debian/), [Python official image](https://hub.docker.com/_/python).
 
@@ -13,9 +13,9 @@ uname -m
 dpkg --print-architecture
 ```
 
-Expected: `aarch64` and `arm64`. If you see `armv7l` or `armhf`, install Raspberry Pi OS 64-bit before following this guide.
+For a 64-bit installation, expect `aarch64` and `arm64`. A 32-bit installation reports `armv7l`/`armhf` (some systems have a 64-bit kernel with 32-bit user space); the build now supports ARMv7 without requiring an OS reinstall. Check the Docker daemon architecture as well if kernel and user-space reports differ.
 
-If Docker is not installed, follow the official **Debian** Docker instructions linked above for your supported Debian/Raspberry Pi OS release. Install Docker Engine, Buildx, and the Compose plugin. Avoid the separate 32-bit Raspbian package instructions on an ARM64 OS.
+If Docker is not installed, use the official **Debian ARM64** instructions on a 64-bit OS or the official **Raspberry Pi OS 32-bit** instructions for a compatible ARMv7 Docker Engine release on a 32-bit OS. Install Docker Engine, Buildx, and the Compose plugin. Existing installations that can run Compose/builds do not need Docker reinstalled for this dependency fix. Upstream Docker availability/support differs by OS/architecture; check the linked official guidance.
 
 Verify the installation:
 
@@ -56,7 +56,7 @@ There are no credentials in `.env.example`. Never commit `.env`, databases, encr
 
 ## 3. Build and start the container
 
-Build natively on the Pi; Docker selects its ARM64 base image automatically:
+Build natively on the Pi; Docker selects the matching base image automatically:
 
 ```sh
 sudo docker compose up -d --build
@@ -64,7 +64,7 @@ sudo docker compose ps
 sudo docker compose logs --tail=100 outhman
 ```
 
-The image uses Python 3.12 and binary cryptography wheels, avoiding a Rust source build on the Pi. Installations need enough RAM/disk for Docker and the build; Pi 4/5 with at least 2 GB RAM are practical starting points. Native builds take longer on smaller models.
+The image uses Python 3.12 and prebuilt cryptography wheels, avoiding a Rust source build. A separate dependency stage installs a C compiler and libffi headers so CFFI can be compiled when no ARMv7 wheel is available. The final runtime image contains libffi but no compiler toolchain. This fixes the former `--only-binary=:all:` resolver failure on `armv7l`. CFFI documents the need for libffi development headers when compiling it: [CFFI installation](https://cffi.readthedocs.io/en/latest/installation.html). Installations need enough RAM/disk for Docker and the build; native compilation takes longer on smaller models.
 
 Check the HTTP service:
 
@@ -207,11 +207,11 @@ docker buildx build --platform linux/arm64 --target app --load -t outhman:pi .
 A multi-platform image can be exported to a local OCI archive without publishing:
 
 ```sh
-docker buildx build --platform linux/amd64,linux/arm64 --target app \
+docker buildx build --platform linux/amd64,linux/arm64,linux/arm/v7 --target app \
   --output type=oci,dest=outhman-images.tar .
 ```
 
-Publishing an image to a registry is separate from pushing this source repository; use your own registry name and authorized credentials if you choose to publish. See [Docker multi-platform build guidance](https://docs.docker.com/build/building/multi-platform/). The included GitHub workflow runs container tests and builds both architectures without publishing an image.
+Publishing an image to a registry is separate from pushing this source repository; use your own registry name and authorized credentials if you choose to publish. See [Docker multi-platform build guidance](https://docs.docker.com/build/building/multi-platform/). The included GitHub workflow runs container tests and builds all three architectures without publishing an image.
 
 ## 10. Updates and troubleshooting
 
@@ -227,7 +227,8 @@ Before updates, keep a current encrypted backup and, when moving installations, 
 - **Cannot connect to Docker daemon:** start Docker Engine (`sudo systemctl start docker` on a configured Pi) or Docker Desktop on a development machine.
 - **Port already allocated:** change `OUTHMAN_HOST_PORT` in `.env`; keep the internal app port 10070 for the included healthcheck.
 - **Permission denied on `/data`:** use the named volume or fix the bind mount ownership to 10001:10001.
-- **No matching ARM image/wheel:** verify `aarch64`/`arm64`, use the supplied Python 3.12 Dockerfile, and rebuild with current package access. A 32-bit host requires a separate tested image strategy.
+- **CFFI / ResolutionImpossible on ARMv7:** pull the updated Dockerfile, then run `sudo docker compose build --pull outhman` and `sudo docker compose up -d`. The build must show the separate `dependencies` stage and `--only-binary=cryptography`, not the old `--only-binary=:all:` install. Do not downgrade encryption packages to work around a missing CFFI wheel.
+- **No matching ARM image/wheel:** verify ARM64 or ARMv7 user space and a compatible Docker Engine, use the supplied Python 3.12 Dockerfile, and rebuild with current package access. ARMv6 is not supported.
 - **User login fails through plain Pi IP:** use the localhost SSH tunnel or HTTPS, then check approval, binding, suspension, and login-block status as admin.
 - **Backup/log API returns 403:** review the directly connected Docker/proxy caller IP and key scope.
 - **App restarts after updating:** check logs for database/configuration permissions and dependency errors; persistent files remain in the named volume.
@@ -235,3 +236,14 @@ Before updates, keep a current encrypted backup and, when moving installations, 
 ## Validation performed
 
 The Linux test image ran all 21 tests successfully as UID 10001. Both `linux/amd64` and `linux/arm64` app images were built and started with a read-only root filesystem and persistent volumes. Their healthchecks passed. The ARM64 image created an encrypted backup and retained it after the container was replaced using the same volume. ARM64 runtime validation used Docker emulation on a development machine; physical Raspberry Pi hardware was not available for this check.
+
+### ARMv7 dependency fix validation
+
+The revised dependency builder compiled CFFI 2.1.1 for CPython 3.12 on `linux/arm/v7`, installed cryptography 50.0.2 from its ARMv7 wheel, and passed all 21 tests as the non-root runtime user under Docker ARMv7 emulation. A C compiler is needed only in the dependency stage; the final app image uses the resulting wheel and the libffi runtime library. To update an existing checkout after the former binary-only installation error:
+
+```sh
+git pull --ff-only
+sudo docker compose build --pull outhman
+sudo docker compose up -d
+sudo docker compose ps
+```

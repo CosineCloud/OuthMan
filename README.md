@@ -1,6 +1,6 @@
 # OuthMan
 
-Run on a 64-bit Raspberry Pi or x86-64 Docker host using [Deployment_inctructions.MD](Deployment_inctructions.MD). The Docker image runs as a non-root user and stores accounts, keys, and backups in a persistent volume.
+Run on an ARM64/ARMv7 Raspberry Pi or x86-64 Docker host using [Deployment_inctructions.MD](Deployment_inctructions.MD). The Docker image runs as a non-root user and stores accounts, keys, and backups in a persistent volume.
 
 A local authentication manager for Cosine Apps. Uses Python 3.11+ and SQLite, plus the cryptography package for encrypted backups.
 
