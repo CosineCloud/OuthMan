@@ -1,0 +1,35 @@
+name: outhman
+
+services:
+  outhman:
+    build:
+      context: .
+      target: app
+    image: outhman:local
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${OUTHMAN_BIND_ADDRESS:-127.0.0.1}:${OUTHMAN_HOST_PORT:-10070}:10070"
+    environment:
+      HOST: 0.0.0.0
+      PORT: "10070"
+      OUTHMAN_DB: /data/outhman.sqlite3
+      OUTHMAN_SECURE_COOKIE: "${OUTHMAN_SECURE_COOKIE:-0}"
+    volumes:
+      - outhman-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  outhman-data:

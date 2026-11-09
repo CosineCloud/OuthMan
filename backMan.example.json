@@ -1,0 +1,21 @@
+{
+  "work_dir": "./backman-data",
+  "hosts": [
+    {
+      "name": "outhman",
+      "url": "http://127.0.0.1:10070",
+      "api_key_env": "OUTHMAN_BACKUP_KEY",
+      "passphrase_env": "OUTHMAN_BACKUP_PASSPHRASE"
+    }
+  ],
+  "cso": {
+    "url": "http://127.0.0.1:10081",
+    "api_key_env": "CSO_KEY",
+    "path_prefix": "backups"
+  },
+  "schedule": {
+    "frequency": "daily",
+    "time": "01:00",
+    "timezone": "America/Chicago"
+  }
+}
